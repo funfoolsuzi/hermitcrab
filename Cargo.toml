@@ -1,0 +1,9 @@
+[package]
+name = "hermitcrab"
+version = "0.1.0"
+authors = [" <>"]
+edition = "2018"
+
+[dependencies]
+num_cpus="1.0"
+log={version="0.4.*", features=["std"]}
