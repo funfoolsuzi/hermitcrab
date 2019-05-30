@@ -1,27 +1,26 @@
 
 use std::{
     io,
-    io::Read,
     collections,
-    net,
 };
 
 use super::method;
+use super::super::super::logger::micro::*;
 
-const MAX_HTTP_LINE_LENGTH: usize = 4096;
+const MAX_HTTP_HEADER_LINE_LENGTH: usize = 4096;
 
 pub struct Req {
     method: method::Method,
     path: String,
     version: String,
     headers: collections::HashMap<String, String>,
-    params: collections::HashMap<String, String>,
+    // params: collections::HashMap<String, String>,
 }
 
 impl Req {
-    pub fn new(s: &mut net::TcpStream) -> io::Result<Self> {
+    pub fn new(s: &mut io::BufRead) -> io::Result<Self> {
         let mut req = Req::default();
-        let first_line = read_until_new_line(s)?;
+        let first_line = read_new_line(s)?;
         let mut iter = first_line.split_whitespace();
         if let Some(mstr) = iter.next() {
             match method::Method::from(mstr) {
@@ -44,18 +43,15 @@ impl Req {
         Ok(req)
     }
 
-    fn parse_headers(&mut self, stream: &mut net::TcpStream) -> io::Result<()> {
-        loop {
-            let line = read_until_new_line(stream)?;
-            let mut next_two = [0u8;2];
-            stream.peek(&mut next_two)?;
-            let (k, v) = split_header_line(line);
-            self.headers.insert(k, v);
-            if next_two == [13, 10] {
-                stream.read(&mut next_two)?;
-                return Ok(());
-            }
+    fn parse_headers(&mut self, r: &mut io::BufRead) -> io::Result<Option<()>> {
+        let line = read_new_line(r)?;
+        if line.is_empty() {
+            return Ok(None);
         }
+        let (k, v) = split_header_line(line);
+        trace!("header parsed {}: {}", k, v);
+        self.headers.insert(k, v);
+        self.parse_headers(r)
     }
 
     pub fn method(&self) -> &method::Method {
@@ -78,31 +74,24 @@ impl Default for Req {
             path: "/".to_string(),
             version: "HTTP/1.1".to_string(),
             headers: collections::HashMap::default(),
-            params: collections::HashMap::default(),
         }
     }
 }
 
-fn read_until_new_line(s: &mut net::TcpStream) -> io::Result<String> {
-    let mut res = String::with_capacity(256);
-    loop {
-        let mut b = [0u8];
-        s.read(&mut b)?;
-        if b[0] == '\r' as u8 {
-            let mut bb = [0u8];
-            s.peek(&mut bb)?;
-            if bb[0] == '\n' as u8 {
-                s.read(&mut bb)?;
-                break;
-            }
+fn read_new_line(s: &mut io::BufRead) -> io::Result<String> {
+    let mut res = String::new();
+    s.read_line(&mut res)?;
+    
+    while res.as_str()[res.len()-2..] != *"\r\n" {
+        if res.len() > MAX_HTTP_HEADER_LINE_LENGTH {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "exceeding max header line limit"));
         }
-        if res.len() > MAX_HTTP_LINE_LENGTH { 
-            return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("HTTP header line length exceed maximum({})", MAX_HTTP_LINE_LENGTH),
-        ))}
-        res.push(b[0] as char);
+        let mut additional = String::new();
+        s.read_line(&mut additional)?;
+        res += additional.as_str();
     }
+    res.pop();
+    res.pop();
     Ok(res)
 }
 
@@ -138,7 +127,8 @@ mod tests {
             client.write(HTTP_REQ_STR.as_bytes()).unwrap();
         });
         let (mut conn, _) = server.accept()?;
-        let req = Req::new(&mut conn)?;
+        let mut buf = io::BufReader::new(&mut conn);
+        let req = Req::new(&mut buf)?;
         assert_eq!(req.method, method::Method::GET);
         assert_eq!(req.path, "/index.html");
         assert_eq!(req.version, "HTTP/1.1");

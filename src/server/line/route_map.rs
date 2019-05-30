@@ -15,6 +15,7 @@ pub struct RouteMap {
 }
 
 
+#[allow(dead_code)]
 impl RouteMap {
     pub fn register(&mut self, m: http::method::Method, p: &'static str, h: impl FnMut(&mut http::req::Req, &mut http::res::Res) + Send + Sync + 'static) {
         let r: HandlerRef = sync::Arc::new(sync::Mutex::new(h));

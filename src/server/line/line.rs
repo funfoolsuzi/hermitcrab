@@ -1,12 +1,14 @@
 
 use std::{
     net,
-    sync::{atomic::{AtomicU32}, mpsc, Arc},
+    sync::mpsc,
     thread,
     time,
     io,
     fmt,
 };
+
+use super::super::super::logger::micro::*;
 
 const LINE_STREAM_TIMEOUT_SECS: u64 = 10;
 const SYNC_CHANNEL_BUFFER_SIZE: usize = 2;
@@ -28,14 +30,13 @@ impl fmt::Display for SendError {
 
 pub struct Line {
     s: mpsc::SyncSender<Option<net::TcpStream>>,
-    fail_count: Arc<AtomicU32>,
-    jhandle: thread::JoinHandle<()>,
+    // TODO: add timestamp
 }
 
 impl Line {
     pub fn new(mut stream_handler: impl FnMut(net::TcpStream) -> io::Result<()> + Send + Sync + 'static) -> Self {
         let (s, r) = mpsc::sync_channel::<Option<net::TcpStream>>(SYNC_CHANNEL_BUFFER_SIZE);
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             for stream in r {
                 if let Some(st) = stream {
                     let t = Some(time::Duration::from_secs(LINE_STREAM_TIMEOUT_SECS));
@@ -50,8 +51,6 @@ impl Line {
         });
         Self {
             s,
-            fail_count: Arc::new(AtomicU32::new(0)),
-            jhandle: handle,
         }
     }
 
@@ -70,7 +69,7 @@ impl Line {
 impl Drop for Line {
     fn drop(&mut self) {
         self.s.send(None).unwrap_or_else(|e|{
-            // TODO: handle e.
+            error!("Failed to drop a processing line. {}", e)
         });
     }
 }
