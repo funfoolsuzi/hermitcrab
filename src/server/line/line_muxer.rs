@@ -34,18 +34,19 @@ impl LineMuxer {
 
     fn get_muxer(&mut self) -> impl FnMut(net::TcpStream) -> io::Result<()> + Send + Sync + 'static {
         let mut routes = self.routes.clone();
-        move |mut s: net::TcpStream| {
+        move |s: net::TcpStream| {
             let mut buf_read = io::BufReader::new(&s);
-            let mut req = http::req::Req::new(&mut buf_read)?;
+            let mut req = http::Req::new(&mut buf_read)?;
             info!("{} {}", req.method(), req.path());
-            let mut res = http::res::Res::default();
+            let mut buf_write = io::BufWriter::new(&s);
+            let mut res = http::Res::new(&mut buf_write);
             let hs = routes.get_handlers(req.method(), req.path());
             for h in hs {
                 let hrm = &mut *h.lock().unwrap();
                 hrm(&mut req, &mut res);
             }
             // TODO: write back valid body
-            res.respond(&mut s, b"hello")?;
+            res.respond(b"hello")?;
             s.shutdown(net::Shutdown::Both)?;
 
             Ok(())

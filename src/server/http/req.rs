@@ -9,18 +9,25 @@ use super::super::super::logger::micro::*;
 
 const MAX_HTTP_HEADER_LINE_LENGTH: usize = 4096;
 
-pub struct Req {
+pub struct Req<'a> {
     method: method::Method,
     path: String,
     version: String,
     headers: collections::HashMap<String, String>,
+    body: &'a mut io::BufRead,
     // params: collections::HashMap<String, String>,
 }
 
-impl Req {
-    pub fn new(s: &mut io::BufRead) -> io::Result<Self> {
-        let mut req = Req::default();
-        let first_line = read_new_line(s)?;
+impl<'a> Req<'a> {
+    pub fn new(s: &'a mut io::BufRead) -> io::Result<Self> {
+        let mut req = Req {
+            method: method::Method::UNKNOWN,
+            path: String::new(),
+            version: String::new(),
+            headers: collections::HashMap::new(),
+            body: s,
+        };
+        let first_line = read_new_line(req.body)?;
         let mut iter = first_line.split_whitespace();
         if let Some(mstr) = iter.next() {
             match method::Method::from(mstr) {
@@ -30,7 +37,7 @@ impl Req {
         } else {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "tcp stream doesn't have valid http first line"));
         }
-        
+
         if let Some(path) = iter.next() {
             req.path = path.to_string();
         }
@@ -38,20 +45,21 @@ impl Req {
         if let Some(version) = iter.next() {
             req.version = version.to_string();
         }
-        req.parse_headers(s)?;
+        
+        req.parse_headers()?;
 
         Ok(req)
     }
 
-    fn parse_headers(&mut self, r: &mut io::BufRead) -> io::Result<Option<()>> {
-        let line = read_new_line(r)?;
+    fn parse_headers(&mut self) -> io::Result<Option<()>> {
+        let line = read_new_line(self.body)?;
         if line.is_empty() {
             return Ok(None);
         }
         let (k, v) = split_header_line(line);
         trace!("header parsed {}: {}", k, v);
         self.headers.insert(k, v);
-        self.parse_headers(r)
+        self.parse_headers()
     }
 
     pub fn method(&self) -> &method::Method {
@@ -65,17 +73,6 @@ impl Req {
     // fn parse_params(&mut self, line: &str) {
     //     // TODO: implement
     // }
-}
-
-impl Default for Req {
-    fn default()->Self {
-        Self {
-            method: method::Method::GET,
-            path: "/".to_string(),
-            version: "HTTP/1.1".to_string(),
-            headers: collections::HashMap::default(),
-        }
-    }
 }
 
 fn read_new_line(s: &mut io::BufRead) -> io::Result<String> {
@@ -110,24 +107,14 @@ mod tests {
     use super::*;
     use std::{
         io,
-        io::Write,
-        net::{TcpListener, TcpStream},
-        thread,
-        time,
     };
 
     const HTTP_REQ_STR: &str = "GET /index.html HTTP/1.1\r\nHost: www.xiwen.com\r\nAccept-Language: en-us\r\nContent-Length: 5\r\n\r\nHello";
 
     #[test]
     fn test_http_header() -> io::Result<()> {
-        let (server, port) = get_tcpserver_and_port()?;
-        thread::spawn(move || {
-            let mut client = TcpStream::connect(format!("127.0.0.1:{}", port)).unwrap();
-            thread::sleep(time::Duration::from_millis(300));
-            client.write(HTTP_REQ_STR.as_bytes()).unwrap();
-        });
-        let (mut conn, _) = server.accept()?;
-        let mut buf = io::BufReader::new(&mut conn);
+        let http_req = String::from(HTTP_REQ_STR);
+        let mut buf = io::BufReader::new(http_req.as_bytes());
         let req = Req::new(&mut buf)?;
         assert_eq!(req.method, method::Method::GET);
         assert_eq!(req.path, "/index.html");
@@ -138,26 +125,5 @@ mod tests {
         assert!(req.headers.contains_key("Host"));
         assert_eq!(req.headers.get("Host").cloned(), Some(String::from("www.xiwen.com")));
         Ok(())
-    }
-
-    fn get_tcpserver_and_port() -> std::io::Result<(TcpListener, i32)> {
-        let mut server: TcpListener;
-        let mut port = 10000;
-        loop {
-            match TcpListener::bind(format!("127.0.0.1:{}", port)) {
-                Ok(s) => {
-                    server = s;
-                    break;
-                },
-                Err(e) => {
-                    if port != 60000 {
-                        port = port + 1;
-                        continue;
-                    }
-                    return Err(e);
-                },
-            }
-        }
-        Ok((server, port))
     }
 }
