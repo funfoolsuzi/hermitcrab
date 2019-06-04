@@ -11,7 +11,6 @@ pub struct Res<'a> {
     body: &'a mut io::Write,
 }
 
-#[allow(dead_code)]
 impl<'a> Res<'a> {
     pub fn new(w: &'a mut io::Write) -> Self {
         Self {
@@ -28,6 +27,7 @@ impl<'a> Res<'a> {
         self.status = status.to_string();
     }
 
+    #[allow(unused)]
     pub fn status(&self) -> &String {
         &self.status
     }

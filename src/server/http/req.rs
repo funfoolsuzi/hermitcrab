@@ -5,7 +5,7 @@ use std::{
 };
 
 use super::method;
-use super::super::super::logger::micro::*;
+use crate::logger::micro::*;
 
 const MAX_HTTP_HEADER_LINE_LENGTH: usize = 4096;
 

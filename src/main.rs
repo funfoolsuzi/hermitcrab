@@ -17,6 +17,8 @@ fn main() {
 
     info!("# of CPU: {}", ncpu);
     let mut s = server::Server::new(port, ncpu*2).unwrap();
+    set_up_server_handlers(&mut s);
+    
     s.start().unwrap();
 }
 
@@ -34,4 +36,15 @@ fn get_http_port() -> i16 {
         },
         Err(_) => DEFAULT_HTTP_PORT,
     } 
+}
+
+fn set_up_server_handlers(server: &mut server::Server) {
+    server.add(server::Method::GET, "/index.html", |_, res: &mut server::Res| {
+        res.respond(b"Hello");
+    });
+    server.filter(|req: &server::Req| {
+        req.path() == "/sample"
+    }).handle(|_, res: &mut server::Res| {
+        res.respond(b"Lorem ipsum");
+    });
 }

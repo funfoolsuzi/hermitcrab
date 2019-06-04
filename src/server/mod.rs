@@ -3,4 +3,7 @@ mod line;
 
 pub mod http;
 
-pub use server::*;
+pub use {
+    server::*,
+    http::*,
+};

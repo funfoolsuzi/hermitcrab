@@ -3,12 +3,16 @@ use std::{
     io,
 };
 use super::*;
-use super::super::{http, super::logger::micro::*};
+use super::super::{
+    http,
+    super::logger::micro::*,
+};
+
 
 pub struct LineMuxer {
     lines: Vec<Line>,
     max_line: usize,
-    pub routes: RouteMap,
+    pub http_muxer: http::Muxer,
 }
 
 impl LineMuxer {
@@ -16,7 +20,7 @@ impl LineMuxer {
         Self {
             lines: vec![],
             max_line,
-            routes: RouteMap::default(),
+            http_muxer: http::Muxer::default(), // TODO: move to server
         }
     }
 
@@ -33,20 +37,21 @@ impl LineMuxer {
     }
 
     fn get_muxer(&mut self) -> impl FnMut(net::TcpStream) -> io::Result<()> + Send + Sync + 'static {
-        let mut routes = self.routes.clone();
+        let http_muxer = self.http_muxer.clone();
         move |s: net::TcpStream| {
             let mut buf_read = io::BufReader::new(&s);
             let mut req = http::Req::new(&mut buf_read)?;
             info!("{} {}", req.method(), req.path());
             let mut buf_write = io::BufWriter::new(&s);
             let mut res = http::Res::new(&mut buf_write);
-            let hs = routes.get_handlers(req.method(), req.path());
-            for h in hs {
-                let hrm = &mut *h.lock().unwrap();
-                hrm(&mut req, &mut res);
+            if let Some(handler_ref) = http_muxer.get_handler(&req) {
+                let handler = &mut *handler_ref.lock().unwrap();
+                handler(&mut req, &mut res);
+                // TODO: write back
+            } else {
+                res.set_status(404, "Not Found.");
+                res.respond(b"Not Found")?;
             }
-            // TODO: write back valid body
-            res.respond(b"hello")?;
             s.shutdown(net::Shutdown::Both)?;
 
             Ok(())
