@@ -14,7 +14,7 @@ use {
 
 pub type Handler = FnMut(&mut Req, &mut Res) + Send + Sync + 'static;
 pub type HandlerRef = sync::Arc<sync::Mutex<Handler>>;
-pub type Matcher = Fn(&Req) -> bool + Send + Sync + 'static;
+pub type Matcher = Fn(&mut Req) -> bool + Send + Sync + 'static;
 pub type MatcherRef = sync::Arc<Matcher>;
 
 type MapEntry = (Method, &'static str);
@@ -33,7 +33,7 @@ pub struct Muxer {
 }
 
 impl Muxer {
-    pub fn filter(& mut self, m: impl Fn(&Req) -> bool + Send + Sync + 'static) -> MatchChain {
+    pub fn filter(&mut self, m: impl Fn(&mut Req) -> bool + Send + Sync + 'static) -> MatchChain {
         let matcher: MatcherRef = sync::Arc::new(m);
         MatchChain {
             matchers: vec![matcher],
@@ -59,7 +59,7 @@ impl Muxer {
         self.map.insert((m, p), hf);
     }
 
-    pub fn get_handler(&self, req: &Req) -> Option<HandlerRef> {
+    pub fn get_handler(&self, req: &mut Req) -> Option<HandlerRef> {
         if let Some(handler) = self.map.get(&(*req.method(), req.path())) {
             Some(handler.clone())
         } else {
@@ -90,7 +90,8 @@ pub struct MatchChain<'a> {
 }
 
 impl<'a> MatchChain<'a> {
-    pub fn filter(mut self, m: impl Fn(&Req) -> bool + Send + Sync + 'static) -> Self {
+    #[allow(dead_code)]
+    pub fn filter(mut self, m: impl Fn(&mut Req) -> bool + Send + Sync + 'static) -> Self {
         let matcher: MatcherRef = sync::Arc::new(m);
         self.matchers.push(matcher);
         Self {
@@ -127,7 +128,7 @@ mod matcher_test {
         let mut buf = io::BufReader::new(TEST_REQ_MSG_STR_1.as_bytes());
         let mut incoming_req = Req::new(&mut buf).unwrap();
 
-        let match_res = mux.get_handler(&incoming_req);
+        let match_res = mux.get_handler(&mut incoming_req);
         assert!(match_res.is_some());
         let matched = match_res.unwrap();
         
@@ -143,9 +144,9 @@ mod matcher_test {
         let mux = create_test_muxer();
 
         let mut buf = io::BufReader::new(TEST_REQ_MSG_STR_2.as_bytes());
-        let incoming_req = Req::new(&mut buf).unwrap();
+        let mut incoming_req = Req::new(&mut buf).unwrap();
 
-        let match_res = mux.get_handler(&incoming_req);
+        let match_res = mux.get_handler(&mut incoming_req);
         assert!(match_res.is_none());
     }
 
@@ -156,9 +157,9 @@ mod matcher_test {
             res.set_status(403, "bad login");
         });
 
-        mux.filter(|r: &Req| {
+        mux.filter(|r: &mut Req| {
             r.method() == &Method::GET
-        }).filter(|r: &Req| {
+        }).filter(|r: &mut Req| {
             r.path() == "/hi"
         }).handle(|_, res: &mut Res| {
             res.set_status(210, "Hello");
@@ -173,7 +174,7 @@ mod matcher_test {
         let mut buf = io::BufReader::new(TEST_REQ_MSG_STR_3.as_bytes());
         let mut incoming_req = Req::new(&mut buf).unwrap();
 
-        let match_res = mux.get_handler(&incoming_req);
+        let match_res = mux.get_handler(&mut incoming_req);
         assert!(match_res.is_some());
 
         let mut read_buf: Vec<u8> = vec![];

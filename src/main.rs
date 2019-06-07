@@ -42,7 +42,7 @@ fn set_up_server_handlers(server: &mut server::Server) {
     server.add(server::Method::GET, "/index.html", |_, res: &mut server::Res| {
         res.respond(b"Hello");
     });
-    server.filter(|req: &server::Req| {
+    server.filter(|req: &mut server::Req| {
         req.path() == "/sample"
     }).handle(|_, res: &mut server::Res| {
         res.respond(b"Lorem ipsum");

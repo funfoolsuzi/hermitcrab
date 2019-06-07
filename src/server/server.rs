@@ -12,7 +12,7 @@ use {
 pub struct Server {
     listener: net::TcpListener,
     stop: Arc<AtomicBool>,
-    muxer: line::LineMuxer,
+    pool: line::LinePool,
 }
 
 impl Server {
@@ -26,7 +26,7 @@ impl Server {
         Ok(Server{
             listener: listener,
             stop: Arc::new(AtomicBool::new(false)),
-            muxer: line::LineMuxer::new(max_line),
+            pool: line::LinePool::new(max_line),
         })
     }
 
@@ -38,18 +38,18 @@ impl Server {
                 Err(e) => return Err(e),
             };
             trace!("incoming connection from {}", addr);
-            self.muxer.handle(stream);
+            self.pool.handle(stream);
         }
         
         Ok(())
     }
 
     pub fn add(&mut self, m: http::Method, p: &'static str, h: impl FnMut(&mut http::Req, &mut http::Res) + Send + Sync + 'static) {
-        self.muxer.http_muxer.add_handler(m, p, h)
+        self.pool.http_muxer.add_handler(m, p, h)
     }
 
-    pub fn filter(&mut self, m: impl Fn(&http::Req) -> bool + Send + Sync + 'static) -> http::MatchChain {
-        self.muxer.http_muxer.filter(m)
+    pub fn filter(&mut self, m: impl Fn(&mut http::Req) -> bool + Send + Sync + 'static) -> http::MatchChain {
+        self.pool.http_muxer.filter(m)
     }
 }
 

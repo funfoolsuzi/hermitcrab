@@ -69,10 +69,6 @@ impl<'a> Req<'a> {
     pub fn path(&self) -> &String {
         &self.path
     }
-
-    // fn parse_params(&mut self, line: &str) {
-    //     // TODO: implement
-    // }
 }
 
 fn read_new_line(s: &mut io::BufRead) -> io::Result<String> {

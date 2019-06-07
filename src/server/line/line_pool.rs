@@ -9,18 +9,18 @@ use super::super::{
 };
 
 
-pub struct LineMuxer {
+pub struct LinePool {
     lines: Vec<Line>,
     max_line: usize,
     pub http_muxer: http::Muxer,
 }
 
-impl LineMuxer {
+impl LinePool {
     pub fn new(max_line: usize) -> Self {
-        Self {
+        LinePool {
             lines: vec![],
             max_line,
-            http_muxer: http::Muxer::default(), // TODO: move to server
+            http_muxer: http::Muxer::default(),
         }
     }
 
@@ -29,8 +29,11 @@ impl LineMuxer {
             self.add_new_line();
             self.handle(s);
         } else if self.lines.len() == self.max_line {
-            // TODO: 
-            //   Full
+            warn!("out of capacity to handle incoming TCP stream");
+            match s.shutdown(net::Shutdown::Both) {
+                Ok(_) => {},
+                Err(e) => error!("failed to shut down over capacity TCP stream: {}", e)
+            };
         } else {
             self.send_to_line(s, 0);
         }
@@ -44,12 +47,15 @@ impl LineMuxer {
             info!("{} {}", req.method(), req.path());
             let mut buf_write = io::BufWriter::new(&s);
             let mut res = http::Res::new(&mut buf_write);
-            if let Some(handler_ref) = http_muxer.get_handler(&req) {
+            if let Some(handler_ref) = http_muxer.get_handler(&mut req) {
                 let handler = &mut *handler_ref.lock().unwrap();
                 handler(&mut req, &mut res);
-                // TODO: write back
+                if !res.responded() {
+                    res.set_status(500, "Empty Response");
+                    res.respond(b"Empty Response")?;
+                }
             } else {
-                res.set_status(404, "Not Found.");
+                res.set_status(404, "Not Found");
                 res.respond(b"Not Found")?;
             }
             s.shutdown(net::Shutdown::Both)?;

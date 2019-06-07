@@ -30,7 +30,8 @@ impl fmt::Display for SendError {
 
 pub struct Line {
     s: mpsc::SyncSender<Option<net::TcpStream>>,
-    // TODO: add timestamp
+    #[allow(dead_code)]
+    ts: time::SystemTime,
 }
 
 impl Line {
@@ -40,10 +41,14 @@ impl Line {
             for stream in r {
                 if let Some(st) = stream {
                     let t = Some(time::Duration::from_secs(LINE_STREAM_TIMEOUT_SECS));
-                    st.set_read_timeout(t);
-                    st.set_write_timeout(t);
-                    stream_handler(st);
-                    // TODO: handle result
+                    st.set_read_timeout(t).unwrap();
+                    st.set_write_timeout(t).unwrap();
+                    match stream_handler(st) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error!("line handler result error: {}", e);
+                        },
+                    };
                 } else {
                     break;
                 }
@@ -51,6 +56,7 @@ impl Line {
         });
         Self {
             s,
+            ts: time::SystemTime::now(),
         }
     }
 
