@@ -2,7 +2,7 @@ use std::{
     fmt,
 };
 
-#[derive(Copy, Clone, PartialEq, Debug, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Debug, Eq, Hash, PartialOrd)]
 pub enum Method {
     GET,
     POST,

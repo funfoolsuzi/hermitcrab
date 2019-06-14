@@ -4,6 +4,7 @@ pub mod pair;
 pub mod method;
 pub mod matcher;
 mod headers;
+mod trie;
 
 pub use {
     req::Req,
