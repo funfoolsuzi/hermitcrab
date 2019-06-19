@@ -7,6 +7,7 @@ use {
         req::Req,
         res::Res,
         method::Method,
+        trie::Trie,
     }
 };
 
@@ -29,7 +30,7 @@ pub struct MatchEntry {
 #[derive(Default, Clone)]
 pub struct Muxer {
     filters: Vec<MatchEntry>,
-    map: collections::HashMap<MapEntry, HandlerRef>,
+    trie: Trie,
 }
 
 impl Muxer {
@@ -56,11 +57,11 @@ impl Muxer {
 
     pub fn add_handler(&mut self, m: Method, p: &'static str, h: impl FnMut(&mut Req, &mut Res) + Send + Sync + 'static) {
         let hf: HandlerRef = sync::Arc::new(sync::Mutex::new(h));
-        self.map.insert((m, p), hf);
+        self.trie.insert(p, &m, &hf);
     }
 
     pub fn get_handler(&self, req: &mut Req) -> Option<HandlerRef> {
-        if let Some(handler) = self.map.get(&(*req.method(), req.path())) {
+        if let Some(handler) = self.trie.get(req.path(), &(*req.method())) {
             Some(handler.clone())
         } else {
             for m in self.filters.iter() {
@@ -146,8 +147,8 @@ mod matcher_test {
         let mut buf = io::BufReader::new(TEST_REQ_MSG_STR_2.as_bytes());
         let mut incoming_req = Req::new(&mut buf).unwrap();
 
-        let match_res = mux.get_handler(&mut incoming_req);
-        assert!(match_res.is_none());
+        let matched_handler = mux.get_handler(&mut incoming_req);
+        assert!(matched_handler.is_none());
     }
 
     fn create_test_muxer() -> Muxer {
@@ -174,12 +175,12 @@ mod matcher_test {
         let mut buf = io::BufReader::new(TEST_REQ_MSG_STR_3.as_bytes());
         let mut incoming_req = Req::new(&mut buf).unwrap();
 
-        let match_res = mux.get_handler(&mut incoming_req);
-        assert!(match_res.is_some());
+        let matched_handler = mux.get_handler(&mut incoming_req);
+        assert!(matched_handler.is_some());
 
-        let mut read_buf: Vec<u8> = vec![];
-        let mut res = Res::new(&mut read_buf);
-        (&mut *match_res.unwrap().lock().unwrap())(&mut incoming_req, &mut res);
+        let mut write_buf: Vec<u8> = vec![];
+        let mut res = Res::new(&mut write_buf);
+        (&mut *matched_handler.unwrap().lock().unwrap())(&mut incoming_req, &mut res);
 
         assert_eq!(res.status(), "bad login"); 
     }

@@ -74,6 +74,10 @@ impl<'a> Req<'a> {
 fn read_new_line(s: &mut io::BufRead) -> io::Result<String> {
     let mut res = String::new();
     s.read_line(&mut res)?;
+
+    if res.len() < 2 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "each line should at least contain \"\\r\\n\" at the end"));
+    }
     
     while res.as_str()[res.len()-2..] != *"\r\n" {
         if res.len() > MAX_HTTP_HEADER_LINE_LENGTH {

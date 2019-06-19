@@ -4,6 +4,7 @@ use {
         method::Method,
         res::Res,
     },
+    crate::logger::micro::*,
 };
 
 #[derive(Clone)]
@@ -19,7 +20,7 @@ impl Node {
                 let mut swap_idx: Option<usize> = None;
                 let mut insert_idx: Option<usize> = None;
                 for (idx, child) in children.iter_mut().enumerate() {
-                    if let Node::Terminal(m, h) = &**child {
+                    if let Node::Terminal(m, _) = &**child {
                         if m == method {
                             swap_idx = Some(idx);
                             break;
@@ -36,31 +37,22 @@ impl Node {
                 }
                 if let Some(idx) = insert_idx {
                     children.insert(idx, Box::new(Node::Terminal(*method, handler.clone())));
+                    warn!("overwriting handler with {} {}", remain, method);
                     return;
-                    // log warning
                 }
                 children.push(Box::new(Node::Terminal(*method, handler.clone())));
                 return;
             }
             let mut insertion_idx: Option<usize> = None;
-            'children: for (idx, child) in children.iter_mut().enumerate() {
+            if children.len() == 0 {
+                insertion_idx = Some(0);
+            }
+            for (idx, child) in children.iter_mut().enumerate() {
                 let mut child_append_str: Option<String> = None;
                 if let Node::Passby(word, grandchildren) = &mut **child {
-                    let mut shared_length = 0usize;
                     let mut word_chars = word.chars().peekable();
                     let mut remain_chars = remain.chars().peekable();
-                    loop {
-                        if let (Some(r_char), Some(cw_char)) = (word_chars.peek(), remain_chars.peek()) {
-                            if r_char != cw_char {
-                                break;
-                            }
-                            word_chars.next();
-                            remain_chars.next();
-                            shared_length += 1;
-                        } else {
-                            break;
-                        }
-                    };
+                    let shared_length = Node::iter_over_shared_chars(&mut word_chars, &mut remain_chars);
                     if shared_length == 0 {
                         if child.is_ahead_of(remain) {
                             insertion_idx = Some(idx);
@@ -94,9 +86,29 @@ impl Node {
         }
     }
 
-    fn get(&self, path: &str, method: &Method) -> HandlerRef {
-        std::sync::Arc::new(std::sync::Mutex::new(|_: &mut super::req::Req, _: &mut Res| {
-        }))
+    fn get(&self, path: &str, method: &Method) -> Option<HandlerRef> {
+        match self {
+            Node::Passby(word, children) => {
+                let mut word_chars = word.chars().peekable();
+                let mut remain_chars = path.chars().peekable();
+                Node::iter_over_shared_chars(&mut word_chars, &mut remain_chars);
+                for child in children {
+                    let new_remain = remain_chars.clone().collect::<String>();
+                    let ref_res = child.get(&new_remain, method);
+                    if ref_res.is_some() {
+                        return ref_res;
+                    }
+                }
+                return None
+            },
+            Node::Terminal(m, handler) => {
+                if m == method {
+                    return Some(handler.clone());
+                } else {
+                    return None;
+                }
+            }
+        };
     }
 
     fn is_ahead_of(&self, target: &str) -> bool {
@@ -104,6 +116,26 @@ impl Node {
             return word.as_str() > target;
         }
         false
+    }
+
+    fn iter_over_shared_chars(
+        p1: &mut std::iter::Peekable<std::str::Chars>,
+        p2: &mut std::iter::Peekable<std::str::Chars>,
+    ) -> usize {
+        let mut shared_length = 0usize;
+        loop {
+            if let (Some(c1), Some(c2)) = (p1.peek(), p2.peek()) {
+                if c1 != c2 {
+                    break;
+                }
+                p1.next();
+                p2.next();
+                shared_length += 1;
+            } else {
+                break;
+            }
+        };
+        shared_length
     }
 
     fn print(&self, indent:usize) {
@@ -129,32 +161,31 @@ impl Node {
     }
 }
 
-#[derive(Default, Clone)]
-struct Trie {
-    root: Option<Node>,
+#[derive(Clone)]
+pub struct Trie {
+    root: Node,
+}
+
+impl Default for Trie {
+    fn default() -> Self {
+        Self {
+            root: Node::Passby(String::new(), vec![]),
+        }
+    }
 }
 
 impl Trie {
-    // pub fn insert(&mut self, m: &Method, p: &str, h: &HandlerRef) {
-    //     match &self.root {
-    //         None => {
-    //             let mut n = Node{
-    //                 key: Key::Word(p.to_string()),
-    //                 handler_ref: None,
-    //                 children: vec![],
-    //             };
-    //             n.append_terminal(m, h);
-    //             self.root = Some(n);
-    //         },
-    //         Some(node) => {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    //         },
-    //     }
-    // }
+    pub fn insert(&mut self, p: &str, m: &Method, h: &HandlerRef) {
+        self.root.append(p, m, h)
+    }
 
-    // pub fn get(&self, m: Method, p: &str) -> HandlerRef {
-
-    // }
+    pub fn get(&self, p: &str, m: &Method) -> Option<HandlerRef> {
+        self.root.get(p, m)
+    }
 }
 
 
@@ -169,40 +200,30 @@ mod trie_tests {
     };
 
     #[test]
-    fn playground() {
-        println!("size: {}", std::mem::size_of::<Option<Box<Node>>>());
-        let mut w: String = "wow".to_string();
-        w.pop();
-
-        println!("word: {}", w);
-    }
-
-    #[test]
     fn node_can_append() {
         let hand_ref_get_hero = get_handler_ref(2);
         let mut root_node = get_node_with_whenwhere();
         root_node.append("what", &Method::GET, &hand_ref_get_hero);
-        //let retrieved_handler = root_node.get("what", &Method::GET);
-        root_node.print(0);
+
+        let mut buf = std::io::BufReader::new("GET /index.html HTTP/1.1\r\nHost: www.xiwen.com\r\nAccept-Language: en-us\r\nContent-Length: 5\r\n\r\nHello".as_bytes());
+        let mut incoming_req = Req::new(&mut buf).unwrap();
+
+        let mut write_buf: Vec<u8> = vec![];
+        let mut res = Res::new(&mut write_buf);
+        if let Some(retrieved_handler) = root_node.get("what", &Method::GET) {
+            (&mut *retrieved_handler.lock().unwrap())(&mut incoming_req, &mut res);
+            assert_eq!(write_buf.as_slice(), "HTTP/1.x 200 OK\r\nContent-Length: 17\r\n\r\nsample handler #2".as_bytes());
+        }
     }
 
     #[test]
     fn can_insert_and_get() {
         let mut tr = Trie::default();
         let hand_ref = get_handler_ref(1);
-        // tr.insert(Method::GET, "hello/world", hand_ref);
-        // let h = tr.get(Method::Get, "hello/word");
-        // assert_eq!(h, hand_ref);
+        tr.insert("hello/world", &Method::GET, &hand_ref);
+        let h = tr.get("hello/word", &Method::GET);
+        assert!(h.is_some());
     }
-
-    // #[test]
-    // fn can_get_shared_length() {
-    //     let len_a = Node::get_shared_length("/where", "/wh");
-    //     assert_eq!(len_a, 3);
-
-    //     let len_b = Node::get_shared_length("/where", "/what");
-    //     assert_eq!(len_b, 3);
-    // }
 
     fn get_handler_ref(index: u32) -> HandlerRef {
         Arc::new(Mutex::new(move|_: &mut Req, res: &mut Res| {
