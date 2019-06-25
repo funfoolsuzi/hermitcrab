@@ -4,7 +4,7 @@ use {
     crate::logger::micro::*,
     std::{
         io, net,
-        sync::{Arc, atomic::{AtomicBool, Ordering}},        
+        sync::{Arc, atomic::{AtomicBool, Ordering}},
     },
     super::{line, http},
 };
@@ -51,15 +51,8 @@ impl Server {
     pub fn filter(&mut self, m: impl Fn(&mut http::Req) -> bool + Send + Sync + 'static) -> http::MatchChain {
         self.pool.http_muxer.filter(m)
     }
-}
 
-#[cfg(test)]
-mod server_test {
-    use super::*;
-
-    #[test]
-    #[ignore]
-    fn test_serve_static() {
-
+    pub fn serve_static(&mut self, prefix: &str, dir_path: &str) -> io::Result<()> {
+        self.pool.http_muxer.serve_static(prefix, dir_path)
     }
 }

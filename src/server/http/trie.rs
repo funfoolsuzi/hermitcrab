@@ -238,7 +238,7 @@ mod trie_tests {
         let mut tr = Trie::default();
         let hand_ref = get_handler_ref(1);
         tr.insert("hello/world", &Method::GET, &hand_ref);
-        let h = tr.get("hello/word", &Method::GET);
+        let h = tr.get("hello/world", &Method::GET);
         assert!(h.is_some());
     }
 

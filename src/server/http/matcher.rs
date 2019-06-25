@@ -1,6 +1,8 @@
 use {
     std::{
         sync,
+        path,
+        io,
     },
     super::{
         req::Req,
@@ -65,6 +67,14 @@ impl Muxer {
             }
             None
         }
+    }
+
+    pub fn serve_static(&mut self, prefix: &str, dir_path: &str) -> io::Result<()> {
+        super::serve_static::add_directory_to_trie(
+            path::Path::new(prefix),
+            path::Path::new(dir_path),
+            &mut self.trie,
+        )
     }
 
     fn combine(matchers: Vec<MatcherRef>) -> MatcherRef{
