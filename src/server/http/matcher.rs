@@ -1,24 +1,18 @@
 use {
     std::{
         sync,
-        collections,
     },
     super::{
         req::Req,
         res::Res,
         method::Method,
         trie::Trie,
+        handler::*,
     }
 };
 
-
-
-pub type Handler = FnMut(&mut Req, &mut Res) + Send + Sync + 'static;
-pub type HandlerRef = sync::Arc<sync::Mutex<Handler>>;
 pub type Matcher = Fn(&mut Req) -> bool + Send + Sync + 'static;
 pub type MatcherRef = sync::Arc<Matcher>;
-
-type MapEntry = (Method, &'static str);
 
 #[derive(Clone)]
 pub struct MatchEntry {
@@ -131,11 +125,11 @@ mod matcher_test {
 
         let match_res = mux.get_handler(&mut incoming_req);
         assert!(match_res.is_some());
-        let matched = match_res.unwrap();
+        let mut matched = match_res.unwrap();
         
         let mut read_buf: Vec<u8> = vec![];
         let mut res = Res::new(&mut read_buf);
-        (&mut *matched.lock().unwrap())(&mut incoming_req, &mut res);
+        matched.handle(&mut incoming_req, &mut res);
 
         assert_eq!(res.status(), "Hello");
     }
@@ -180,7 +174,7 @@ mod matcher_test {
 
         let mut write_buf: Vec<u8> = vec![];
         let mut res = Res::new(&mut write_buf);
-        (&mut *matched_handler.unwrap().lock().unwrap())(&mut incoming_req, &mut res);
+        matched_handler.unwrap().handle(&mut incoming_req, &mut res);
 
         assert_eq!(res.status(), "bad login"); 
     }

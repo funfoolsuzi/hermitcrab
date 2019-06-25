@@ -5,6 +5,7 @@ use std::{
 use super::*;
 use super::super::{
     http,
+    Handle,
     super::logger::micro::*,
 };
 
@@ -47,9 +48,8 @@ impl LinePool {
             info!("{} {}", req.method(), req.path());
             let mut buf_write = io::BufWriter::new(&s);
             let mut res = http::Res::new(&mut buf_write);
-            if let Some(handler_ref) = http_muxer.get_handler(&mut req) {
-                let handler = &mut *handler_ref.lock().unwrap();
-                handler(&mut req, &mut res);
+            if let Some(mut handler) = http_muxer.get_handler(&mut req) {
+                handler.handle(&mut req, &mut res);
                 if !res.responded() {
                     res.set_status(500, "Empty Response");
                     res.respond(b"Empty Response")?;

@@ -1,8 +1,7 @@
 use {
     super::{
-        matcher::HandlerRef,
+        handler::HandlerRef,
         method::Method,
-        res::Res,
     },
     crate::logger::micro::*,
 };
@@ -31,11 +30,13 @@ impl Node {
                     }
                 }
                 if let Some(idx) = swap_idx {
+                    println!("debug-swap_indx: {}", idx);
                     children.push(Box::new(Node::Terminal(*method, handler.clone())));
                     children.swap_remove(idx);
                     return;
                 }
                 if let Some(idx) = insert_idx {
+                    println!("debug-insert_idx: {}", idx);
                     children.insert(idx, Box::new(Node::Terminal(*method, handler.clone())));
                     warn!("overwriting handler with {} {}", remain, method);
                     return;
@@ -44,7 +45,8 @@ impl Node {
                 return;
             }
             let mut insertion_idx: Option<usize> = None;
-            if children.len() == 0 {
+            let children_len = children.len();
+            if children_len == 0 {
                 insertion_idx = Some(0);
             }
             for (idx, child) in children.iter_mut().enumerate() {
@@ -57,6 +59,8 @@ impl Node {
                         if child.is_ahead_of(remain) {
                             insertion_idx = Some(idx);
                             break
+                        } else if idx == children_len-1 {
+                            insertion_idx = Some(idx + 1);
                         }
                         continue;                                
                     }
@@ -69,7 +73,7 @@ impl Node {
                     child_append_str = Some(remain_chars.collect());
                     grandchildren.clear();
                     grandchildren.push(Box::new(new_passby));
-                    for _ in 1..shared_length {
+                    for _ in 0..(word.len() - shared_length) {
                         word.pop();
                     }
                 }
@@ -82,18 +86,28 @@ impl Node {
                 let mut new_passby = Node::Passby(remain.to_string(), vec![]);
                 new_passby.append("", method, handler);
                 children.insert(idx, Box::new(new_passby));
+                return
             }
+
         }
     }
 
     fn get(&self, path: &str, method: &Method) -> Option<HandlerRef> {
         match self {
             Node::Passby(word, children) => {
+                if !path.starts_with(word) {
+                    return None;
+                }
                 let mut word_chars = word.chars().peekable();
                 let mut remain_chars = path.chars().peekable();
                 Node::iter_over_shared_chars(&mut word_chars, &mut remain_chars);
+                let new_remain = remain_chars.clone().collect::<String>();
                 for child in children {
-                    let new_remain = remain_chars.clone().collect::<String>();
+                    if child.is_ahead_of(new_remain.as_str()) {
+                        break;
+                    }
+
+                    println!("debug child.get({}, {}) word: {}", &new_remain, method, word);
                     let ref_res = child.get(&new_remain, method);
                     if ref_res.is_some() {
                         return ref_res;
@@ -138,24 +152,20 @@ impl Node {
         shared_length
     }
 
-    fn print(&self, indent:usize) {
+    fn _print(&self, indent:usize) {
         let mut indent_str = "".to_string();
         for _ in 0..indent {
             indent_str.push(' ');
         }
         match self {
             Node::Passby(word, children) => {
-                print!("{}{} - ", indent_str, word);
+                print!("- {}{}\n", indent_str, word);
                 for (idx, child) in children.iter().enumerate() {
-                    if idx == 0 {
-                        child.print(0);
-                    } else {
-                        child.print(indent + word.len() + 3);
-                    }
+                    child._print(indent + 2);
                 }
             },
             Node::Terminal(method, _) => {
-                print!("{}{}\n", indent_str, method);
+                print!("- {}{}\n", indent_str, method);
             }
         }
     }
@@ -175,6 +185,7 @@ impl Default for Trie {
 }
 
 impl Trie {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -186,6 +197,10 @@ impl Trie {
     pub fn get(&self, p: &str, m: &Method) -> Option<HandlerRef> {
         self.root.get(p, m)
     }
+
+    pub fn _print(&self) {
+        self.root._print(0);
+    }
 }
 
 
@@ -196,7 +211,9 @@ mod trie_tests {
         std::sync::{Arc, Mutex},
         super::super::{
             req::Req,
+            res::Res,
         },
+        crate::server::http::handler::Handle,
     };
 
     #[test]
@@ -210,19 +227,25 @@ mod trie_tests {
 
         let mut write_buf: Vec<u8> = vec![];
         let mut res = Res::new(&mut write_buf);
-        if let Some(retrieved_handler) = root_node.get("what", &Method::GET) {
-            (&mut *retrieved_handler.lock().unwrap())(&mut incoming_req, &mut res);
-            assert_eq!(write_buf.as_slice(), "HTTP/1.x 200 OK\r\nContent-Length: 17\r\n\r\nsample handler #2".as_bytes());
-        }
+
+        let mut retrieved_handler = root_node.get("what", &Method::GET).unwrap();
+        retrieved_handler.handle(&mut incoming_req, &mut res);
+        assert_eq!(write_buf.as_slice(), "HTTP/1.x 200 OK\r\nContent-Length: 17\r\n\r\nsample handler #2".as_bytes());
     }
 
     #[test]
-    fn can_insert_and_get() {
+    fn node_can_insert_and_get() {
         let mut tr = Trie::default();
         let hand_ref = get_handler_ref(1);
         tr.insert("hello/world", &Method::GET, &hand_ref);
         let h = tr.get("hello/word", &Method::GET);
         assert!(h.is_some());
+    }
+
+    #[test]
+    fn node_return_none_when_nothing_found() {
+        let n = get_node_with_whenwhere();
+        assert!(n.get("/wowow", &Method::GET).is_none());
     }
 
     fn get_handler_ref(index: u32) -> HandlerRef {

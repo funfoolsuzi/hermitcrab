@@ -53,3 +53,13 @@ impl Server {
     }
 }
 
+#[cfg(test)]
+mod server_test {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn test_serve_static() {
+
+    }
+}
