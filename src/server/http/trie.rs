@@ -3,7 +3,7 @@ use {
         handler::HandlerRef,
         method::Method,
     },
-    crate::logger::micro::*,
+    crate::logger::help::warn,
 };
 
 #[derive(Clone)]
@@ -160,7 +160,7 @@ impl Node {
         match self {
             Node::Passby(word, children) => {
                 print!("- {}{}\n", indent_str, word);
-                for (idx, child) in children.iter().enumerate() {
+                for child in children.iter() {
                     child._print(indent + 2);
                 }
             },

@@ -6,9 +6,8 @@ use {
         req::Req,
         res::Res,
         handler::HandlerRef,
-        headers::*,
     },
-    crate::logger::micro::*,
+    crate::logger::help::*,
 };
 
 pub fn add_directory_to_trie(prefix: &path::Path, dir: &path::Path, trie: &mut Trie) -> io::Result<()> {

@@ -8,7 +8,7 @@ use std::{
     fmt,
 };
 
-use super::super::super::logger::micro::*;
+use crate::logger::help::*;
 
 const LINE_STREAM_TIMEOUT_SECS: u64 = 10;
 const SYNC_CHANNEL_BUFFER_SIZE: usize = 2;

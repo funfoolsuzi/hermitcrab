@@ -16,7 +16,7 @@ pub use log::{
     set_boxed_logger, set_max_level,
 };
 
-pub mod micro {
+pub mod help {
     pub use super::log::{trace, debug, error, warn, info};
 }
 
@@ -96,7 +96,7 @@ pub fn init_stdout_logger(msg_buffer_size: usize, level: Level) -> Result<(), Se
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::micro::*;
+    use super::help::*;
     use std::{
         io,
         time,
