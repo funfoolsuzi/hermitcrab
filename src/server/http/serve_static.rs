@@ -30,7 +30,6 @@ pub fn add_directory_to_trie(prefix: &path::Path, dir: &path::Path, trie: &mut T
 }
 
 fn add_file_to_trie(prefix: &path::Path, file: &path::Path, trie: &mut Trie) -> io::Result<()> {
-    println!("debug add_file_to_trie {} {}", prefix.display(), file.display());
     let data = fs::read(file)?;
     let owned_file = file.to_owned();
     let p = file.file_name()
@@ -43,7 +42,6 @@ fn add_file_to_trie(prefix: &path::Path, file: &path::Path, trie: &mut Trie) -> 
             error!("failed to respond static file: {} error: {}", owned_file.display(), e);
         }
     }));
-    println!("debug insert_to_trie {}", p);
     trie.insert(&p, &Method::GET, &hr);
     return Ok(())
 }

@@ -17,7 +17,7 @@ mod main_test {
     #[test]
     #[ignore]
     fn main_test() {
-        logger::init_stdout_logger(10, logger::Level::Trace).unwrap();
+        logger::init_stdout_logger(10, logger::Level::Debug).unwrap();
 
         // let port = get_http_port();
         let port = 9999;
@@ -47,7 +47,7 @@ mod main_test {
     }
 
     fn set_up_server_handlers(server: &mut server::Server) {
-        server.add(server::Method::GET, "/index.html", |_, res: &mut server::Res| {
+        server.add(server::Method::GET, "/hello", |_, res: &mut server::Res| {
             res.respond(b"Hello").unwrap();
         });
         server.filter(|req: &mut server::Req| {
@@ -55,5 +55,6 @@ mod main_test {
         }).handle(|_, res: &mut server::Res| {
             res.respond(b"Lorem ipsum").unwrap();
         });
+        server.serve_static("/", "test_data").unwrap();
     }
 }

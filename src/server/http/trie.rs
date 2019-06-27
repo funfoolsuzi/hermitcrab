@@ -1,9 +1,10 @@
 use {
+    std::{path},
     super::{
         handler::HandlerRef,
         method::Method,
     },
-    crate::logger::help::warn,
+    crate::logger::help::{warn, trace},
 };
 
 #[derive(Clone)]
@@ -13,6 +14,9 @@ enum Node {
 }
 
 impl Node {
+    fn append2(&mut self, p: &path::Path, p_begin: usize, p_end: usize, m: &Method, handler: &HandlerRef) {
+
+    }
     fn append(&mut self, remain: &str, method: &Method, handler: &HandlerRef) {
         if let Node::Passby(_, children) = self {
             if remain.is_empty() {
@@ -30,13 +34,11 @@ impl Node {
                     }
                 }
                 if let Some(idx) = swap_idx {
-                    println!("debug-swap_indx: {}", idx);
                     children.push(Box::new(Node::Terminal(*method, handler.clone())));
                     children.swap_remove(idx);
                     return;
                 }
                 if let Some(idx) = insert_idx {
-                    println!("debug-insert_idx: {}", idx);
                     children.insert(idx, Box::new(Node::Terminal(*method, handler.clone())));
                     warn!("overwriting handler with {} {}", remain, method);
                     return;
@@ -107,7 +109,6 @@ impl Node {
                         break;
                     }
 
-                    println!("debug child.get({}, {}) word: {}", &new_remain, method, word);
                     let ref_res = child.get(&new_remain, method);
                     if ref_res.is_some() {
                         return ref_res;
@@ -191,6 +192,7 @@ impl Trie {
     }
 
     pub fn insert(&mut self, p: &str, m: &Method, h: &HandlerRef) {
+        trace!("http handler inserted: {} {}", m, p);
         self.root.append(p, m, h)
     }
 
@@ -215,6 +217,13 @@ mod trie_tests {
         },
         crate::server::http::handler::Handle,
     };
+
+    #[test]
+    fn node_play_append2() {
+        let mut n = get_node_with_whenwhere();
+        let handler_here = get_handler_ref(2);
+        n.append2(path::Path::new("/here"), 0, 5, &Method::GET, &handler_here);
+    }
 
     #[test]
     fn node_can_append() {
