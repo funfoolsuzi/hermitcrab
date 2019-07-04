@@ -17,7 +17,7 @@ mod main_test {
     #[test]
     #[ignore]
     fn main_test() {
-        logger::init_stdout_logger(10, logger::Level::Debug).unwrap();
+        logger::init_stdout_logger(10, logger::Level::Trace).unwrap();
 
         // let port = get_http_port();
         let port = 9999;
