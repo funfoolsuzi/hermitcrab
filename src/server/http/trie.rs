@@ -1,5 +1,4 @@
 use {
-    std::{path},
     super::{
         handler::HandlerRef,
         method::Method,
@@ -29,36 +28,46 @@ impl Node {
         }
     }
 
-    fn get(&self, path: &str, method: &Method) -> Option<HandlerRef> {
+    fn get(&self, path: &str, p_begin: usize, method: &Method) -> Option<HandlerRef> {
         match self {
             Node::Passby(word, children) => {
-                if !path.starts_with(word) {
-                    return None;
-                }
-                let mut word_chars = word.chars().peekable();
-                let mut remain_chars = path.chars().peekable();
-                Self::iter_over_shared_chars(&mut word_chars, &mut remain_chars);
-                let new_remain = remain_chars.clone().collect::<String>();
-                for child in children {
-                    if child.is_ahead_of(new_remain.as_str()) {
-                        break;
-                    }
-
-                    let ref_res = child.get(&new_remain, method);
-                    if ref_res.is_some() {
-                        return ref_res;
-                    }
-                }
-                return None
+                Self::get_passby(word, children, path, p_begin, method)
             },
             Node::Terminal(m, handler) => {
-                if m == method {
-                    return Some(handler.clone());
-                } else {
-                    return None;
-                }
+                Self::get_terminal(method, m, handler)
             }
-        };
+        }
+    }
+
+    #[inline]
+    fn get_passby(word: &String, children: &Vec<Box<Self>>, path: &str, mut p_begin: usize, method: &Method) -> Option<HandlerRef> {
+        let mut word_chars = word.chars();
+        let mut remain_chars = path[p_begin..].chars();
+        let shared_length = Self::iter_over_shared_chars(&mut word_chars, &mut remain_chars);
+        if shared_length != word.len() {
+            return None;
+        }
+        p_begin += shared_length;
+        let new_remain = &path[p_begin..];
+        for child in children {
+            if child.is_ahead_of(new_remain) {
+                break;
+            }
+            let ref_res = child.get(path, p_begin, method);
+            if ref_res.is_some() {
+                return ref_res;
+            }
+        }
+        return None
+    }
+
+    #[inline]
+    fn get_terminal(target_method: &Method, terminal_method: &Method, handler: &HandlerRef) -> Option<HandlerRef> {
+        if target_method == terminal_method {
+            return Some(handler.clone());
+        } else {
+            return None;
+        }
     }
 
     fn is_ahead_of(&self, target: &str) -> bool {
@@ -68,32 +77,13 @@ impl Node {
         false
     }
 
-    fn iter_over_shared_chars(
-        p1: &mut std::iter::Peekable<std::str::Chars>,
-        p2: &mut std::iter::Peekable<std::str::Chars>,
-    ) -> usize {
-        let mut shared_length = 0usize;
-        loop {
-            if let (Some(c1), Some(c2)) = (p1.peek(), p2.peek()) {
-                if c1 != c2 {
-                    break;
-                }
-                p1.next();
-                p2.next();
-                shared_length += 1;
-            } else {
-                break;
-            }
-        };
-        shared_length
-    }
-
+    #[inline]
     fn attach_passby(v: &mut Vec<Box<Self>>, p: &str, p_begin: usize, m: &Method, handler: &HandlerRef) {
         let num_nodes = v.len();
         for (idx, child) in v.iter_mut().enumerate() {
             if let Node::Passby(word, grandchildren) = &mut **child {
                 let mut remain_chars = p[p_begin..].chars();
-                let shared_length = Self::iter_over_shared_chars2(&mut word.chars(), &mut remain_chars);
+                let shared_length = Self::iter_over_shared_chars(&mut word.chars(), &mut remain_chars);
                 let new_p_begin = p_begin + shared_length;
                 if shared_length != 0 {
                     if new_p_begin == p.len() { // this is weird, cuz checked in the parent function
@@ -132,7 +122,7 @@ impl Node {
         new_passby
     }
 
-    fn iter_over_shared_chars2(p1: &mut std::str::Chars, p2: &mut std::str::Chars) -> usize {
+    fn iter_over_shared_chars(p1: &mut std::str::Chars, p2: &mut std::str::Chars) -> usize {
         let mut shared_length = 0usize;
         loop {
             if let (Some(c1), Some(c2)) = (p1.next(), p2.next()) {
@@ -147,6 +137,7 @@ impl Node {
         shared_length
     }
 
+    #[inline]
     fn insert_or_replace_existing(v: &mut Vec<Box<Self>>, path: &str, method: &Method, new: Self) {
         for (idx, child) in v.iter_mut().enumerate() {
             if let Node::Terminal(m, _) = &**child {
@@ -207,7 +198,7 @@ impl Trie {
     }
 
     pub fn get(&self, p: &str, m: &Method) -> Option<HandlerRef> {
-        self.root.get(p, m)
+        self.root.get(p, 0, m)
     }
 
     pub fn _print(&self) {
@@ -217,7 +208,7 @@ impl Trie {
 
 
 #[cfg(test)]
-mod trie_tests {
+mod tests {
     use {
         super::*,
         std::sync::{Arc, Mutex},
@@ -240,7 +231,7 @@ mod trie_tests {
         let mut write_buf: Vec<u8> = vec![];
         let mut res = Res::new(&mut write_buf);
 
-        let mut retrieved_handler = root_node.get("what", &Method::GET).unwrap();
+        let mut retrieved_handler = root_node.get("what", 0, &Method::GET).unwrap();
         retrieved_handler.handle(&mut incoming_req, &mut res);
         assert_eq!(write_buf.as_slice(), "HTTP/1.x 200 OK\r\nContent-Length: 17\r\n\r\nsample handler #2".as_bytes());
     }
@@ -257,7 +248,7 @@ mod trie_tests {
     #[test]
     fn node_return_none_when_nothing_found() {
         let n = get_node_with_whenwhere();
-        assert!(n.get("/wowow", &Method::GET).is_none());
+        assert!(n.get("/wowow", 0, &Method::GET).is_none());
     }
 
     fn get_handler_ref(index: u32) -> HandlerRef {
@@ -287,6 +278,5 @@ mod trie_tests {
                 ),
             ]
         )
-
     }
 }
